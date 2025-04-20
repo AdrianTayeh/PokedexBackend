@@ -34,9 +34,9 @@ class Pokemon {
 
   static async findAll() {
     try {
-      const [rows] = await pool.query("SELECT id, name FROM Pokemons");
+      const [rows] = await pool.query("SELECT id, name, weight, height FROM Pokemons");
 
-      return rows.map((pokemon) => new Pokemon(pokemon.id, pokemon.name));
+      return rows.map((pokemon) => new Pokemon(pokemon.id, pokemon.name, pokemon.weight, pokemon.height));
     } catch (err) {
       console.error("Error fetching all Pokemons:", err);
       throw new Error("Database error");

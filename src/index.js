@@ -10,10 +10,16 @@ const timeMiddleware = require("./middlewares/timeMiddleware");
 const User = require("./models/User");
 const Pokemon = require("./models/Pokemon");
 
+const corsOption = {
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  credentials: true,
+};
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOption));
 app.use(timeMiddleware);
 
 app.post("/users", async (req, res) => {
@@ -83,6 +89,7 @@ app.get("/profile", authMiddleWare, async (req, res) => {
     const user = req.user;
 
     res.status(200).json({
+      id: user.id,
       name: user.name,
       email: user.email,
       account_created: user.accountCreated,
@@ -119,10 +126,7 @@ app.post("/login", async (req, res) => {
       {
         userId: user.id,
       },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "5h",
-      }
+      process.env.JWT_SECRET
     );
 
     res.status(200).json({
@@ -254,7 +258,7 @@ app.post("/assign-pokemon", authMiddleWare, async (req, res) => {
     const userId = req.user.id;
 
     const [rows] = await pool.query(
-      "SELECT * FROM UsersPokemon WHERE pokemon_id = ? AND user_id = ?",
+      "SELECT * FROM UsersPokemons WHERE pokemon_id = ? AND user_id = ?",
       [pokemonId, userId]
     );
 
@@ -264,7 +268,7 @@ app.post("/assign-pokemon", authMiddleWare, async (req, res) => {
         .json({ error: "Pokemon is already assigned to you" });
 
     await pool.query(
-      "INSERT INTO UsersPokemon (pokemon_id, user_id) VALUES (?, ?)",
+      "INSERT INTO UsersPokemons (pokemon_id, user_id) VALUES (?, ?)",
       [pokemonId, userId]
     );
 
@@ -278,9 +282,9 @@ app.post("/assign-pokemon", authMiddleWare, async (req, res) => {
   }
 });
 
-app.get("/user-pokemons", authMiddleWare, async (req, res) => {
+app.get("/user-pokemons/:id", authMiddleWare, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.params.id;
 
     const [assignedPokemon] = await pool.query(
       `SELECT p.id, p.name, p.weight, p.height
@@ -302,11 +306,71 @@ app.get("/user-pokemons", authMiddleWare, async (req, res) => {
     );
 
     res.status(200).json({
-        assignedPokemon,
-        unassignedPokemons,
+      assignedPokemon,
+      unassignedPokemons,
     });
   } catch (err) {
     console.error("Error fetching user Pokemon:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.get("/pokemon/:id/users", authMiddleWare, async (req, res) => {
+  const pokemonId = req.params.id;
+  try {
+    const pokemon = await Pokemon.findById(pokemonId);
+    if (!pokemon) return res.status(404).json({ error: "Pokemon not found" });
+
+    const [users] = await pool.query(
+      `SELECT u.id, u.name, u.email, u.account_created, u.last_login
+            FROM Users u
+            INNER JOIN UsersPokemons up ON u.id = up.user_id
+            WHERE up.pokemon_id = ?`,
+      [pokemonId]
+    );
+
+    res.status(200).json({
+      pokemon: {
+        id: pokemon.id,
+        name: pokemon.name,
+        weight: pokemon.weight,
+        height: pokemon.height,
+      },
+      users,
+    });
+  } catch (err) {
+    console.error("Error fetching users for Pokemon:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.delete("/unassign-pokemon/:id", authMiddleWare, async (req, res) => {
+  const { pokemonId } = req.body;
+  const userId = req.params.id;
+  if (!pokemonId) {
+    return res.status(400).json({ error: "Pokemon ID is required" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM UsersPokemons WHERE pokemon_id = ? AND user_id = ?",
+      [pokemonId, userId]
+    );
+
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Pokemon is not assigned to the user" });
+    }
+
+    await pool.query(
+      "DELETE FROM UsersPokemons WHERE pokemon_id = ? AND user_id = ?",
+      [pokemonId, userId]
+    );
+
+    res.status(200).json({ message: "Pokemon unassigned successfully" });
+  } catch (err) {
+    console.error("Error unassigning Pokemon:", err);
     res.status(500).json({ error: "Database error" });
   }
 });

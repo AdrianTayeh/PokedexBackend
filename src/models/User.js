@@ -2,12 +2,13 @@ const pool = require("../db");
 const bcrypt = require("bcryptjs");
 
 class User {
-  constructor(id, name, email, accountCreated, lastLogin) {
+  constructor(id, name, email, accountCreated, lastLogin, password) {
     this.id = id;
     this.name = name;
     this.email = email;
     this.accountCreated = accountCreated;
     this.lastLogin = lastLogin;
+    this.password = password;
   }
 
   static async findById(id) {
@@ -29,7 +30,7 @@ class User {
 
   static async findByEmail(email) {
     const [rows] = await pool.query(
-      "SELECT id, name, email, account_created, last_login FROM Users WHERE email = ?",
+      "SELECT id, name, email, password, account_created, last_login FROM Users WHERE email = ?",
       [email]
     );
     if (rows.length === 0) return null;
@@ -40,7 +41,8 @@ class User {
       user.name,
       user.email,
       user.account_created,
-      user.last_login
+      user.last_login,
+      user.password
     );
   }
 
@@ -63,7 +65,7 @@ class User {
 
   static async findAll() {
     const [rows] = await pool.query(
-      "SELECT id name, email, account_created, last_login FROM Users"
+      "SELECT id, name, email, account_created, last_login FROM Users"
     );
 
     return rows.map(
@@ -80,7 +82,7 @@ class User {
 
   async update(attributes) {
     const { name, email } = attributes;
-    await pool.query("UPDATE Users SET name = ?, email = ?, WHERE id = ?", [
+    await pool.query("UPDATE Users SET name = ?, email = ? WHERE id = ?", [
       name || this.name,
       email || this.email,
       this.id,
